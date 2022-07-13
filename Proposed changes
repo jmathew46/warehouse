@@ -1,0 +1,6 @@
+1. .split("-") to get color
+2. Need to change items column to display both combos and what each combo is made of (i.e. VA30XX-XX (1)VA30XX (1)VA30XX)
+3. General bug fixes, fix counting errors
+4. Selenium script to access website for shipping dates/po/warehouse etc, remove do not continue when these are null
+   (Weird dropdown thing on the website hides the xpath id for the clickable elements, needs elaboration and test to access the site)
+Make sure our formatting is valid
