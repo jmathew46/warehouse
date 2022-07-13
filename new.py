@@ -71,7 +71,7 @@ def parse_data(data_sheet, class_lookup, warehouses):
         if len(item_nums) == 1:
             return item_nums[0]
 
-        colors = [item[-1] if item[-1].isalpha() else "" for item in item_nums] # NOTE: is a letter at the end always a color?
+        colors = [item[item.index("-")+1:] if item[item.index("-")+1:] else "" for item in item_nums]
 
         if any(color != colors[0] for color in colors):
             raise ValueError
