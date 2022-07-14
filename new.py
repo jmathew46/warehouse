@@ -56,6 +56,9 @@ def load_class_lookup(path):
 
 def parse_data(data_sheet, class_lookup, warehouses):
     def determine_ship_status(order_time, status):
+        if order_time is None:
+            return "On Time"
+
         date_fmt = "%Y-%m-%d"
         current_time = datetime.now()
         business_days = np.busday_count(order_time.strftime(date_fmt), current_time.strftime(date_fmt))
@@ -96,7 +99,7 @@ def parse_data(data_sheet, class_lookup, warehouses):
         order_time = data_sheet.cell(row, 3).value
         class_name = ""
 
-        if None in (po, carrier, order_time, status, warehouse) or warehouse not in warehouses or carrier in IGNORED_CARRIERS:
+        if None in (status, warehouse) or warehouse not in warehouses or carrier in IGNORED_CARRIERS:
             continue
 
         ship_status = determine_ship_status(order_time, status)
