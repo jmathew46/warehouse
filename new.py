@@ -333,6 +333,9 @@ def write_data(output_data, path):
     for item in output_data.values():
         start_row = row_ptr
 
+        if "columns" not in item:
+            continue
+
         for offset in itertools.count():
             written = False
 
@@ -360,7 +363,7 @@ def write_data(output_data, path):
 
 
 def main():
-    data_sheet = openpyxl.load_workbook("rp3.xlsx").active
+    data_sheet = openpyxl.load_workbook("report.xlsx").active
     class_lookup = load_class_lookup("class_lookup.xlsx")
     warehouses = input_warehouses()
     output_data = parse_data(data_sheet, class_lookup, warehouses)
