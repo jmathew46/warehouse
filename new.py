@@ -133,15 +133,49 @@ def parse_data(data_sheet, class_lookup, warehouses):
             uid = combine_item_nums(items, qtys)
         except ValueError:
             num_late = 0 if ship_status != "Late" else total_qty
-            conflicts = [item for item in items if item in output_data]
+            nonconflicting = []
+            new_qtys = []
 
-            if conflicts:
-                raise ValueError("Row merge conflicts with item number merge for: " + ", ".join(conflicts))
+            for q, item in zip(qtys, items):
+                if item in output_data:
+                    num_late = 0 if ship_status != "Late" else q
+                    if output_data[item]["meta"]["mode"] != "NORMAL":
+                        raise ValueError("Item number merge conflicted with row merge while resolving merge issue")
+                    if not is_combo:
+                        output_data[uid]["meta"]["qty"] += q
+                        output_data[uid]["meta"]["late"] += num_late
 
-            output_data[items[0]] = {
+                    new_qty = output_data[uid]["meta"]["qty"]
+                    new_late = output_data[uid]["meta"]["late"]
+
+                    if ship_status == "Late":
+                        output_data[uid]["columns"][0] = [class_name]
+                        output_data[uid]["columns"][1] = [uid]
+                        output_data[uid]["columns"][2] = [f"{new_qty} ({new_late} Late)"]
+                        output_data[uid]["columns"][3].append(ship_status)
+                        output_data[uid]["columns"][4].append(po)
+                        output_data[uid]["columns"][5].append(carrier)
+                        output_data[uid]["columns"][6].append(warehouse)
+                else:
+                    nonconflicting.append(item)
+                    new_qtys.append(q)
+
+
+            if not nonconflicting:
+                continue
+
+            row_uid = " ".join(nonconflicting)
+
+            for q, item in zip(new_qtys, nonconflicting):
+                output_data[item] = { "meta": { "parent": row_uid, "q": q } }
+
+            total_qty = sum(new_qtys)
+            num_late = 0 if ship_status != "Late" else total_qty
+
+            output_data[row_uid] = {
                 "columns": [
                     [class_name],
-                    items,
+                    nonconflicting,
                     [f"{total_qty} ({num_late} Late)"],
                     [ship_status],
                     [po],
@@ -153,6 +187,7 @@ def parse_data(data_sheet, class_lookup, warehouses):
 
                 "meta": {
                     "mode": "MULTI",
+                    "parent": nonconflicting[0],
                 },
             }
         else:
@@ -162,23 +197,73 @@ def parse_data(data_sheet, class_lookup, warehouses):
             num_late = 0 if ship_status != "Late" else total_qty
 
             if uid in output_data:
-                if output_data[uid]["meta"]["mode"] != "NORMAL":
-                    raise ValueError("Item number merge conflicts with row merge for: " + uid) # NOTE: not sure what to do here either
-                if not is_combo:
-                    output_data[uid]["meta"]["qty"] += total_qty
-                    output_data[uid]["meta"]["late"] += num_late  #
+                if "parent" in output_data[uid]["meta"]:
+                    parent = output_data[uid]["meta"]["parent"]
+                    output_data[parent]["columns"][1].remove(uid)
+                    if not is_combo: total_qty += output_data[uid]["meta"]["q"]
 
-                new_qty = output_data[uid]["meta"]["qty"]
-                new_late = output_data[uid]["meta"]["late"]
+                    if not output_data[parent]["columns"][1]:
+                        del output_data[parent]
+                    del output_data[uid]
 
-                if ship_status == "Late":
-                    output_data[uid]["columns"][0] = [class_name]
-                    output_data[uid]["columns"][1] = [uid]
-                    output_data[uid]["columns"][2] = [f"{new_qty} ({new_late} Late)"]
-                    output_data[uid]["columns"][3].append(ship_status)
-                    output_data[uid]["columns"][4].append(po)
-                    output_data[uid]["columns"][5].append(carrier)
-                    output_data[uid]["columns"][6].append(warehouse)
+                    num_late = 0 if ship_status != "Late" else total_qty
+
+                    if ship_status == "Late":
+                        output_data[uid] = {
+                            "columns": [
+                                [class_name],
+                                [uid],
+                                [f"{total_qty} ({num_late} Late)"],
+                                [ship_status],
+                                [po],
+                                [carrier],
+                                [warehouse],
+                            ],
+
+                            "merge": [1, 2, 3],
+
+                            "meta": {
+                                "mode": "NORMAL",
+                                "qty": total_qty,
+                                "late": num_late
+                            },
+                        }
+                    else:
+                        output_data[uid] = {
+                            "columns": [
+                                [],
+                                [],
+                                [],
+                                [],
+                                [],
+                                [],
+                                [],
+                            ],
+
+                            "merge": [1, 2, 3],
+
+                            "meta": {
+                                "mode": "NORMAL",
+                                "qty": total_qty,
+                                "late": num_late
+                            },
+                        }
+                else:
+                    if not is_combo:
+                        output_data[uid]["meta"]["qty"] += total_qty
+                        output_data[uid]["meta"]["late"] += num_late  #
+
+                    new_qty = output_data[uid]["meta"]["qty"]
+                    new_late = output_data[uid]["meta"]["late"]
+
+                    if ship_status == "Late":
+                        output_data[uid]["columns"][0] = [class_name]
+                        output_data[uid]["columns"][1] = [uid]
+                        output_data[uid]["columns"][2] = [f"{new_qty} ({new_late} Late)"]
+                        output_data[uid]["columns"][3].append(ship_status)
+                        output_data[uid]["columns"][4].append(po)
+                        output_data[uid]["columns"][5].append(carrier)
+                        output_data[uid]["columns"][6].append(warehouse)
             else:
                 if ship_status == "Late":
                     output_data[uid] = {
