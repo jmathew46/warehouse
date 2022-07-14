@@ -187,7 +187,6 @@ def parse_data(data_sheet, class_lookup, warehouses):
 
                 "meta": {
                     "mode": "MULTI",
-                    "parent": nonconflicting[0],
                 },
             }
         else:
