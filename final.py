@@ -11,6 +11,18 @@ MAX_DELAY = 2
 PREFIX = "VA"
 
 
+def strip_color(num):
+    dash_i = num.index("-")
+
+    try:
+        color_i = next(i for i, c in enumerate(num[dash_i:]) if c.isalpha()) + dash_i
+        num = num[:color_i]
+    except StopIteration:
+        pass
+
+    return num
+
+
 def input_warehouses():
     print("Choose Warehouses")
 
@@ -107,16 +119,7 @@ class Entry(object):
     def count_qtys(self, late, combo_lookup):
         items = [item for item in self.items if not (item.ship_status != "Late" and late)]
         counts = {}
-        key = self.uid
-        dash_i = key.index("-")
-
-        try:
-            color_i = next(i for i, c in enumerate(key[dash_i:]) if c.isalpha()) + dash_i
-            key = key[:color_i]
-        except StopIteration:
-            pass
-
-        combo = combo_lookup[key]
+        combo = combo_lookup[strip_color(self.uid)]
 
         for item in items:
             key = item.num
@@ -165,15 +168,16 @@ class Entry(object):
     def add_entry(self, entry):
         self.items.extend(entry.items)
 
-    def get_combo_num(self):
-        items_str = " ".join(set(item.num for item in self.items))
+    def get_combo_num(self, combo_lookup):
+        combo = combo_lookup[strip_color(self.uid)]
+        items_str = " ".join(f"{k} ({v})" for k, v in combo.items())
         return f"{self.uid}: {items_str}"
 
     def write_to(self, output_data, class_lookup, combo_lookup):
         self.compute_qtys(combo_lookup)
 
         class_name = class_lookup.get(self.items[0].num, "")
-        item_num = self.get_combo_num() if self.is_combo else self.uid
+        item_num = self.get_combo_num(combo_lookup) if self.is_combo else self.uid
         total_qty = f"{self.total_qty} ({self.late_qty} Late)"
 
         to_display = [item for item in self.items if item.ship_status == "Late"]
