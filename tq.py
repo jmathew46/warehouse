@@ -2,7 +2,6 @@ import openpyxl
 import itertools
 import numpy as np
 from datetime import datetime
-from json import dumps
 
 COMBOS = ["VA30", "VA31"]
 WAREHOUSE_IDS = ["NY", "CA", "TX"]
@@ -28,7 +27,7 @@ def input_warehouses():
         elif choice in range(len(WAREHOUSE_IDS)):
             warehouses.add(choice)
 
-    return [WAREHOUSE_IDS[wh] for wh in warehouses]
+    return [WAREHOUSE_IDS[wh - 1] for wh in warehouses]
 
 
 def load_class_lookup(path):
@@ -102,8 +101,6 @@ def parse_data(data_sheet, class_lookup, warehouses):
 
         if None in (status, warehouse) or warehouse not in warehouses or carrier in IGNORED_CARRIERS:
             continue
-
-        print(dumps(output_data, indent=2))
 
         ship_status = determine_ship_status(order_time, status)
         skip_row = False
@@ -205,15 +202,7 @@ def parse_data(data_sheet, class_lookup, warehouses):
                 if "parent" in output_data[uid]["meta"]:
                     parent = output_data[uid]["meta"]["parent"]
                     output_data[parent]["columns"][1].remove(uid)
-                    print(uid, warehouse)
-                    if not is_combo:
-                        total_qty += output_data[uid]["meta"]["q"]
-                    output_data[uid]["meta"]["qty"] -= total_qty
-                    output_data[uid]["meta"]["late"] += num_late  #
-
-                    new_qty = output_data[uid]["meta"]["qty"]
-                    new_late = output_data[uid]["meta"]["late"]
-
+                    if not is_combo: total_qty += output_data[uid]["meta"]["q"]
 
                     if not output_data[parent]["columns"][1]:
                         del output_data[parent]
@@ -374,12 +363,12 @@ def write_data(output_data, path):
 
 
 def main():
-    data_sheet = openpyxl.load_workbook("report.xlsx").active
-    class_lookup = load_class_lookup("class_lookup.xlsx")
+    data_sheet = openpyxl.load_workbook(r"C:\Users\saiya\Downloads\Report_20220711065021.xlsx").active
+    class_lookup = load_class_lookup(r"C:\Users\saiya\Downloads\Inventory item list (1).xlsx")
     warehouses = input_warehouses()
     output_data = parse_data(data_sheet, class_lookup, warehouses)
 
-    write_data(output_data, "output.xlsx")
+    write_data(output_data, r"C:\Users\saiya\Downloads\git.xlsx")
 
 
 if __name__ == "__main__":

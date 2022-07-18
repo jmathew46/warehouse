@@ -74,22 +74,18 @@ class Entry(object):
         self.items = []
         self.special_order = False
         self.uid = None
-        self.combo_len = 1
-        self.combo_late = 0
+        self.is_combo = False
 
     def __str__(self):
         item_str = "\n\t".join(map(str, self.items))
         special_order_char = '*' if self.special_order else ' '
         return f"[{special_order_char}] {self.uid}\n\t{item_str}\n"
 
-    def is_combo(self):
-        return all(any(item.num.startswith(combo) for combo in COMBOS) for item in self.items)
-
     def get_total_qty(self):
-        return self.combo_len if self.is_combo() else sum(item.qty for item in self.items)
+        return sum(item.qty for item in self.items) // (2 if self.is_combo else 1)
 
     def get_late_qty(self):
-        return self.combo_late if self.is_combo() else sum(item.qty for item in self.items if item.ship_status == "Late")
+        return sum(item.qty for item in self.items if item.ship_status == "Late") // (2 if self.is_combo else 1)
 
     def compute_uid(self):
         if len(self.items) == 1:
@@ -98,7 +94,7 @@ class Entry(object):
 
         colors = [item.num[item.num.index("-") + 1:] for item in self.items]
 
-        if not self.is_combo() or any(color != colors[0] for color in colors):
+        if not all(any(item.num.startswith(combo) for combo in COMBOS) for item in self.items) or any(color != colors[0] for color in colors):
             self.special_order = True
             self.uid = "SPECIAL ORDER: " + " ".join(f"{item.num} ({item.qty})" for item in self.items)
             return
@@ -107,26 +103,18 @@ class Entry(object):
         num = sum(int(raw_num[-2:]) * item.qty for raw_num, item in zip(raw_nums, self.items))
         first = max(raw_nums, key=lambda v: int(v[2:]))
         self.uid = f"{first}-{num}{colors[0]}"
+        self.is_combo = True
 
     def add_entry(self, entry):
-        if self.is_combo():
-            ship_status = entry.items[0].ship_status
-
-            self.combo_len += entry.get_total_qty()
-            assert(all(item.ship_status == ship_status for item in entry.items))
-
-            if ship_status == "Late":
-                self.combo_late += entry.get_total_qty()
-
         self.items.extend(entry.items)
 
     def get_combo_num(self):
-        items_str = " ".join(item.num for item in self.items)
+        items_str = " ".join(set(item.num for item in self.items))
         return f"{self.uid}: {items_str}"
 
     def write_to(self, output_data, class_lookup):
         class_name = class_lookup.get(self.items[0].num, "")
-        item_num = self.get_combo_num() if self.is_combo() else self.uid
+        item_num = self.get_combo_num() if self.is_combo else self.uid
         total_qty = f"{self.get_total_qty()} ({self.get_late_qty()} Late)"
 
         to_display = [item for item in self.items if item.ship_status == "Late"]
