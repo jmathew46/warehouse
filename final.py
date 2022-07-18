@@ -56,6 +56,27 @@ def load_class_lookup(path):
     return class_lookup
 
 
+def load_combo_lookup(path):
+    combo_lookup_sheet = openpyxl.load_workbook(path).active
+    combo_lookup = {}
+
+    for row in range(4, combo_lookup_sheet.max_row + 1):
+        combo = combo_lookup_sheet.cell(row, 1).value
+
+        if combo is None:
+            break
+
+        qty1, piece1 = combo_lookup_sheet.cell(row, 2).value.split()
+        qty2, piece2 = combo_lookup_sheet.cell(row, 3).value.split()
+
+        combo_pieces = {}
+        combo_pieces[piece1] = int(qty1[:-2])
+        combo_pieces[piece2] = int(qty2[:-2])
+        combo_lookup[combo] = combo_pieces
+
+    return combo_lookup
+
+
 class Item(object):
     def __init__(self):
         self.num = None
@@ -75,17 +96,53 @@ class Entry(object):
         self.special_order = False
         self.uid = None
         self.is_combo = False
+        self.total_qty = None
+        self.late_qty = None
 
     def __str__(self):
         item_str = "\n\t".join(map(str, self.items))
         special_order_char = '*' if self.special_order else ' '
         return f"[{special_order_char}] {self.uid}\n\t{item_str}\n"
 
-    def get_total_qty(self):
-        return sum(item.qty for item in self.items) // (2 if self.is_combo else 1)
+    def count_qtys(self, late, combo_lookup):
+        items = [item for item in self.items if not (item.ship_status != "Late" and late)]
+        counts = {}
+        key = self.uid
+        dash_i = key.index("-")
 
-    def get_late_qty(self):
-        return sum(item.qty for item in self.items if item.ship_status == "Late") // (2 if self.is_combo else 1)
+        try:
+            color_i = next(i for i, c in enumerate(key[dash_i:]) if c.isalpha()) + dash_i
+            key = key[:color_i]
+        except StopIteration:
+            pass
+
+        combo = combo_lookup[key]
+
+        for item in items:
+            key = item.num
+
+            try:
+                key = key[:key.index("-")]
+            except ValueError:
+                pass
+
+            counts[key] = counts.get(key, 0) + item.qty
+
+        vals = [v // combo[k] for k, v in counts.items()]
+
+        if not vals:
+            return 0
+
+        assert(all(val == vals[0] for val in vals))
+        return vals[0]
+
+    def compute_qtys(self, combo_lookup):
+        if self.is_combo:
+            self.total_qty = self.count_qtys(False, combo_lookup)
+            self.late_qty = self.count_qtys(True, combo_lookup)
+        else:
+            self.total_qty = sum(item.qty for item in self.items)
+            self.late_qty = sum(item.qty for item in self.items if item.ship_status == "Late")
 
     def compute_uid(self):
         if len(self.items) == 1:
@@ -112,10 +169,12 @@ class Entry(object):
         items_str = " ".join(set(item.num for item in self.items))
         return f"{self.uid}: {items_str}"
 
-    def write_to(self, output_data, class_lookup):
+    def write_to(self, output_data, class_lookup, combo_lookup):
+        self.compute_qtys(combo_lookup)
+
         class_name = class_lookup.get(self.items[0].num, "")
         item_num = self.get_combo_num() if self.is_combo else self.uid
-        total_qty = f"{self.get_total_qty()} ({self.get_late_qty()} Late)"
+        total_qty = f"{self.total_qty} ({self.late_qty} Late)"
 
         to_display = [item for item in self.items if item.ship_status == "Late"]
 
@@ -134,7 +193,7 @@ class Entry(object):
         })
 
 
-def parse_data(data_sheet, warehouses, class_lookup):
+def parse_data(data_sheet, warehouses, class_lookup, combo_lookup):
     def get_ship_status(order_time, status):
         if order_time is None:
             return "On Time"
@@ -197,7 +256,7 @@ def parse_data(data_sheet, warehouses, class_lookup):
     output_data = []
 
     for entry in entries.values():
-        entry.write_to(output_data, class_lookup)
+        entry.write_to(output_data, class_lookup, combo_lookup)
 
     return output_data
 
@@ -253,8 +312,9 @@ def write_data(output_data, path):
 def main():
     data_sheet = openpyxl.load_workbook("report.xlsx").active
     class_lookup = load_class_lookup("class_lookup.xlsx")
+    combo_lookup = load_combo_lookup("combo_lookup.xlsx")
     warehouses = input_warehouses()
-    output_data = parse_data(data_sheet, warehouses, class_lookup)
+    output_data = parse_data(data_sheet, warehouses, class_lookup, combo_lookup)
 
     write_data(output_data, "output.xlsx")
 
