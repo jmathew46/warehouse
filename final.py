@@ -27,10 +27,10 @@ def input_warehouses():
     print("Choose Warehouses")
 
     for i, warehouse in enumerate(WAREHOUSE_IDS):
-        print(f"({i + 1}) {warehouse}") #
+        print(f"({i + 1}) {warehouse}")
 
-    print(f"({len(WAREHOUSE_IDS) + 1}) All") #
-    print("ex: '1 3'") #
+    print(f"({len(WAREHOUSE_IDS) + 1}) All")
+    print("ex: '1 3'")
 
     choices = [int(choice) - 1 for choice in input("> ").split()]
     warehouses = set()
@@ -221,7 +221,7 @@ def parse_data(data_sheet, warehouses, class_lookup, combo_lookup):
         warehouse = data_sheet.cell(row, 8).value
         ship_status = get_ship_status(order_time, status)
 
-        if warehouse not in warehouses or carrier in IGNORED_CARRIERS:
+        if warehouse not in warehouses:
             continue
 
         skip_row = False
@@ -251,6 +251,9 @@ def parse_data(data_sheet, warehouses, class_lookup, combo_lookup):
             continue
 
         entry.compute_uid()
+
+        if carrier in IGNORED_CARRIERS and (len(entry.items) == 1 or entry.is_combo):
+            continue
 
         if entry.uid in entries:
             entries[entry.uid].add_entry(entry)
@@ -295,7 +298,7 @@ def write_data(output_data, path):
 
                 if offset < len(data):
                     value = data[offset]
-                    written = True #
+                    written = True
 
                 output_sheet.cell(row_ptr + offset, col + 1).value = value
 
@@ -306,7 +309,7 @@ def write_data(output_data, path):
 
         if row_ptr - start_row > 1:
             for col in item["merge"]:
-                output_sheet.merge_cells(start_row=start_row, end_row=row_ptr - 1, start_column=col, end_column=col) #
+                output_sheet.merge_cells(start_row=start_row, end_row=row_ptr - 1, start_column=col, end_column=col)
                 for row in range(start_row, row_ptr):
                     output_sheet.cell(row, col).alignment = openpyxl.styles.Alignment(vertical="center")
 
