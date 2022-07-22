@@ -11,6 +11,32 @@ MAX_DELAY = 2
 PREFIX = "VA"
 
 
+def decompose_item_num(item_num):
+    item_num = item_num.replace("-", "")
+
+    try:
+        color_index = next(i for i, c in enumerate(item_num[2:]) if c.isalpha()) + 2
+    except StopIteration:
+        color_index = len(item_num)
+
+    return item_num[:color_index], item_num[color_index:]
+
+
+def extract_order_nums(path):
+    sheet = openpyxl.load_workbook(path).active
+    order_nums = []
+
+    for row in range(2, sheet.max_row + 1):
+        order_num = str(sheet.cell(row, 3).value)
+
+        if order_num is None:
+            break
+
+        order_nums.append(order_num)
+
+    return order_nums
+
+
 def strip_color(num):
     dash_i = num.index("-")
 
@@ -144,26 +170,32 @@ class Entry(object):
             self.total_qty = self.count_qtys(False, combo_lookup)
             self.late_qty = self.count_qtys(True, combo_lookup)
         else:
-            self.total_qty = sum(item.qty for item in self.items)
-            self.late_qty = sum(item.qty for item in self.items if item.ship_status == "Late")
+            self.total_qty = sum(int(item.qty) for item in self.items)
+            self.late_qty = sum(int(item.qty) for item in self.items if item.ship_status == "Late")
 
-    def compute_uid(self):
+    def compute_uid(self, combo_lookup):
         if len(self.items) == 1:
             self.uid = self.items[0].num
             return
 
-        colors = [item.num[item.num.index("-") + 1:] for item in self.items]
+        decomposed = [decompose_item_num(item.num) for item in self.items]
+        colors = [d[1] for d in decomposed]
 
         if not all(any(item.num.startswith(combo) for combo in COMBOS) for item in self.items) or any(color != colors[0] for color in colors):
             self.special_order = True
             self.uid = "SPECIAL ORDER: " + " ".join(f"{item.num} ({item.qty})" for item in self.items)
             return
 
-        raw_nums = [item.num[:item.num.index("-")] for item in self.items]
-        num = sum(int(raw_num[-2:]) * item.qty for raw_num, item in zip(raw_nums, self.items))
+        raw_nums = [d[0] for d in decomposed]
+        num = sum(int(raw_num[-2:]) * int(item.qty) for raw_num, item in zip(raw_nums, self.items))
         first = max(raw_nums, key=lambda v: int(v[2:]))
         self.uid = f"{first}-{num}{colors[0]}"
-        self.is_combo = True
+
+        if self.uid in combo_lookup:
+            self.is_combo = True
+        else:
+            self.uid = self.items[0].num
+            self.is_combo = False
 
     def add_entry(self, entry):
         self.items.extend(entry.items)
@@ -197,23 +229,20 @@ class Entry(object):
         })
 
 
-def parse_data(data_sheet, warehouses, class_lookup, combo_lookup):
-    def get_ship_status(order_time, status):
-        if order_time is None:
-            return "On Time"
+def get_ship_status(order_time, status):
+    if order_time is None:
+        return "On Time"
 
-        date_fmt = "%Y-%m-%d"
-        current_time = datetime.now()
-        business_days = np.busday_count(order_time.strftime(date_fmt), current_time.strftime(date_fmt))
-        return "Late" if business_days > MAX_DELAY and status.lower() != "shipped" else "On Time"
+    date_fmt = "%Y-%m-%d"
+    current_time = datetime.now()
+    business_days = np.busday_count(order_time.strftime(date_fmt), current_time.strftime(date_fmt))
+    return "Late" if business_days > MAX_DELAY and status.lower() != "shipped" else "On Time"
 
-    ###############################################
 
-    entries = {}
+def get_data(data_sheet):
+    data = []
 
     for row in range(2, data_sheet.max_row + 1):
-        entry = Entry()
-
         po = data_sheet.cell(row, 1).value
         order_time = data_sheet.cell(row, 3).value
         carrier = data_sheet.cell(row, 6).value
@@ -221,18 +250,42 @@ def parse_data(data_sheet, warehouses, class_lookup, combo_lookup):
         warehouse = data_sheet.cell(row, 8).value
         ship_status = get_ship_status(order_time, status)
 
-        if warehouse not in warehouses:
-            continue
-
-        skip_row = False
+        items = []
 
         for i in range(data_sheet.max_column + 1):
-            item = Item()
             num = data_sheet.cell(row, 11 + i * 3).value
             qty = data_sheet.cell(row, 12 + i * 3).value
 
             if num is None:
                 break
+
+            items.append((num, int(qty)))
+
+        data.append((
+            po,
+            carrier,
+            status,
+            warehouse,
+            ship_status,
+            items,
+        ))
+
+    return data
+
+
+def parse_data(data, warehouses, class_lookup, combo_lookup):
+    entries = {}
+
+    for po, carrier, status, warehouse, ship_status, items in data:
+        entry = Entry()
+
+        if warehouse not in warehouses:
+            continue
+
+        skip_row = False
+
+        for num, qty in items:
+            item = Item()
 
             if not num.startswith(PREFIX):
                 skip_row = True
@@ -250,7 +303,7 @@ def parse_data(data_sheet, warehouses, class_lookup, combo_lookup):
         if skip_row:
             continue
 
-        entry.compute_uid()
+        entry.compute_uid(combo_lookup)
 
         if carrier in IGNORED_CARRIERS and (len(entry.items) == 1 or entry.is_combo):
             continue
@@ -321,7 +374,7 @@ def main():
     class_lookup = load_class_lookup("class_lookup.xlsx")
     combo_lookup = load_combo_lookup("combo_lookup.xlsx")
     warehouses = input_warehouses()
-    output_data = parse_data(data_sheet, warehouses, class_lookup, combo_lookup)
+    output_data = parse_data(get_data(data_sheet), warehouses, class_lookup, combo_lookup)
 
     write_data(output_data, "output.xlsx")
 
