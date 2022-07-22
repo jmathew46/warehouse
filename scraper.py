@@ -11,12 +11,6 @@ from datetime import datetime
 import sheets
 
 
-def strip_ends_with(string, substr):
-    if string.endswith(substr):
-        return string[:-len(substr)]
-    return string
-
-
 def query_sheet(path):
     while True:
         files = os.listdir(path)
@@ -83,17 +77,11 @@ def main():
         else:
             raise ValueError
 
-        for elem in driver.find_element(By.CSS_SELECTOR, "#OrderWarehouseSelectionSummary").find_elements(By.CSS_SELECTOR, "div")[1].find_elements(By.CSS_SELECTOR, "b"):
-            style = elem.get_attribute("style")
-
-            if "green" in style and "color" in style:
-                warehouse = elem.get_attribute("innerText")
-                break
-        else:
-            raise ValueError
+        warehouse = driver.find_elements(By.CSS_SELECTOR, "tbody")[2].find_elements(By.CSS_SELECTOR, "td")[1].get_attribute("innerText")
 
         po = po_num["textContent"][3:]
-        warehouse = strip_ends_with(warehouse, ".")
+        print(warehouse)
+        warehouse = warehouse[warehouse.index("(") + 1:warehouse.index(")")]
         carrier = carrier[carrier.index("Shipping Method -") + 18:].strip()
         status = "Not Shipped"
         ship_status = sheets.get_ship_status(order_time, status)
@@ -137,8 +125,6 @@ def main():
             ship_status,
             items,
         ))
-
-    print(data)
 
     class_lookup = sheets.load_class_lookup("class_lookup.xlsx")
     combo_lookup = sheets.load_combo_lookup("combo_lookup.xlsx")
