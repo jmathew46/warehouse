@@ -56,7 +56,7 @@ def main():
 
         driver.get(f"{url}/{order_num}/manage")
 
-        tbody = driver.find_element(By.CSS_SELECTOR, "tbody")
+        tbody = driver.find_elements(By.CSS_SELECTOR, "tbody")[3]
         items = []
         carrier = driver.find_element(By.CSS_SELECTOR, "address").get_attribute("innerHTML")
 
@@ -80,13 +80,12 @@ def main():
         warehouse = driver.find_elements(By.CSS_SELECTOR, "tbody")[2].find_elements(By.CSS_SELECTOR, "td")[1].get_attribute("innerText")
 
         po = po_num["textContent"][3:]
-        print(warehouse)
         warehouse = warehouse[warehouse.index("(") + 1:warehouse.index(")")]
         carrier = carrier[carrier.index("Shipping Method -") + 18:].strip()
         status = "Not Shipped"
         ship_status = sheets.get_ship_status(order_time, status)
 
-        headings = driver.find_element(By.CSS_SELECTOR, "thead").find_element(By.CSS_SELECTOR, "tr").find_elements(By.CSS_SELECTOR, "th")
+        headings = driver.find_elements(By.CSS_SELECTOR, "thead")[3].find_element(By.CSS_SELECTOR, "tr").find_elements(By.CSS_SELECTOR, "th")
 
         num_index = None
         qty_index = None
@@ -94,9 +93,9 @@ def main():
         for i, heading in enumerate(headings):
             text = heading.get_attribute("innerText")
 
-            if text == "Item #":
+            if text == "Item Name":
                 num_index = i
-            elif text == "Quantity":
+            elif text == "Quanity":
                 qty_index = i
 
             if num_index is not None and qty_index is not None:
@@ -112,7 +111,7 @@ def main():
 
             num_td = item_data[num_index]
             qty_td = item_data[qty_index]
-            num = num_td.get_attribute("title")
+            num = num_td.get_attribute("innerText")
             qty = qty_td.get_attribute("innerText")
 
             items.append((num, qty))

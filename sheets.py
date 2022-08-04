@@ -8,7 +8,6 @@ COMBOS = ["VA30", "VA31"]
 WAREHOUSE_IDS = ["NY", "CA", "TX"]
 IGNORED_CARRIERS = ["Fedex", "Ups"]
 MAX_DELAY = 2
-PREFIX = "VA"
 
 
 def decompose_item_num(item_num):
@@ -183,7 +182,7 @@ class Entry(object):
 
         if not all(any(item.num.startswith(combo) for combo in COMBOS) for item in self.items) or any(color != colors[0] for color in colors):
             self.special_order = True
-            self.uid = "SPECIAL ORDER: " + " ".join(f"{item.num} ({item.qty})" for item in self.items)
+            self.uid = "SPECIAL ORDER: " + "".join(f"\n\t{item.num} ({item.qty})" for item in self.items)
             return
 
         raw_nums = [d[0] for d in decomposed]
@@ -282,14 +281,8 @@ def parse_data(data, warehouses, class_lookup, combo_lookup):
         if warehouse not in warehouses:
             continue
 
-        skip_row = False
-
         for num, qty in items:
             item = Item()
-
-            if not num.startswith(PREFIX):
-                skip_row = True
-                break
 
             item.num = num
             item.qty = qty
@@ -299,9 +292,6 @@ def parse_data(data, warehouses, class_lookup, combo_lookup):
             item.warehouse = warehouse
 
             entry.items.append(item)
-
-        if skip_row:
-            continue
 
         entry.compute_uid(combo_lookup)
 
