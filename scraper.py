@@ -2,6 +2,7 @@ import os
 import sys
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions
 from tempfile import gettempdir
@@ -26,16 +27,24 @@ def main():
     temp_dir = os.path.join(gettempdir(), f"scraped_report{random()}")
     Path(temp_dir).mkdir(parents=True, exist_ok=False)
 
+
+    capabilities = DesiredCapabilities().CHROME
+    capabilities["pageLoadStrategy"] = "none"
+
     options = webdriver.ChromeOptions()
     options.add_argument("--log-level=3")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--headless")
     options.add_experimental_option("prefs", { "download.default_directory": temp_dir })
 
-    driver = webdriver.Chrome("C:/Selenium/chromedriver.exe", chrome_options=options)
+    driver = webdriver.Chrome("C:/Selenium/chromedriver.exe", chrome_options=options, desired_capabilities=capabilities)
     wait = WebDriverWait(driver, 10)
     username = input("Username:\n")
     password = input("Password:\n")
 
     driver.get("https://www2.order-fulfillment.bz/vanityart/reports")
+    wait.until(expected_conditions.presence_of_element_located((By.ID, "btnLogin")))
     driver.find_element(By.NAME, "LoginId").send_keys(username)
     driver.find_element(By.NAME, "Password").send_keys(password)
     driver.find_element(By.ID, "btnLogin").click()
@@ -56,7 +65,11 @@ def main():
 
         driver.get(f"{url}/{order_num}/manage")
 
-        tbody = driver.find_elements(By.CSS_SELECTOR, "tbody")[3]
+        tbodys = driver.find_elements(By.CSS_SELECTOR, "tbody")
+        while len(tbodys) < 4:
+            tbodys = driver.find_elements(By.CSS_SELECTOR, "tbody")
+        tbody = tbodys[3]
+
         items = []
         carrier = driver.find_element(By.CSS_SELECTOR, "address").get_attribute("innerHTML")
 
