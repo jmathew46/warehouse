@@ -1,3 +1,7 @@
+"""
+Scrapes data from a website
+"""
+
 import os
 import sys
 from selenium import webdriver
@@ -22,38 +26,38 @@ def query_sheet(path):
             raise ValueError
 
 
-def main():
-    progress = len(sys.argv) > 1 and sys.argv[1] == "prog"
-    temp_dir = os.path.join(gettempdir(), f"scraped_report{random()}")
-    Path(temp_dir).mkdir(parents=True, exist_ok=False)
+def clear_files(path):
+    files = os.listdir(path)
+
+    for f in files:
+        os.remove(os.path.join(path, f))
 
 
-    capabilities = DesiredCapabilities().CHROME
-    capabilities["pageLoadStrategy"] = "none"
+def query_warehouse(driver):
+    wh_strip = lambda s: "".join(c for c in s if c.isalpha())
+    for elem in driver.find_elements(By.CSS_SELECTOR, "b"):
+        if "green" in elem.get_attribute("style"):
+            warehouse = wh_strip(elem.get_attribute("innerText").strip())
+            if any(wh in warehouse for wh in sheets.WAREHOUSE_IDS):
+                return warehouse
+    warehouse = wh_strip(driver.find_elements(By.CSS_SELECTOR, "tbody")[2].find_elements(By.CSS_SELECTOR, "td")[1].get_attribute("innerText"))
+    if any(wh in warehouse for wh in sheets.WAREHOUSE_IDS):
+        return warehouse
+    raise ValueError("Could not find warehouse")
 
-    options = webdriver.ChromeOptions()
-    options.add_argument("--log-level=3")
-    options.add_argument("--disable-extensions")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--headless")
-    options.add_experimental_option("prefs", { "download.default_directory": temp_dir })
 
-    driver = webdriver.Chrome("C:/Selenium/chromedriver.exe", chrome_options=options, desired_capabilities=capabilities)
-    wait = WebDriverWait(driver, 10)
-    username = input("Username:\n")
-    password = input("Password:\n")
+def scrape(driver, data, wait, site, progress, temp_dir, username, password):
+    driver.get(f"https://www2.order-fulfillment.bz/{site}/reports")
 
-    driver.get("https://www2.order-fulfillment.bz/vanityart/reports")
     wait.until(expected_conditions.presence_of_element_located((By.ID, "btnLogin")))
     driver.find_element(By.NAME, "LoginId").send_keys(username)
     driver.find_element(By.NAME, "Password").send_keys(password)
     driver.find_element(By.ID, "btnLogin").click()
 
     wait.until(expected_conditions.presence_of_element_located((By.CSS_SELECTOR, "#btnPendingShipment"))).click()
+    clear_files(temp_dir)
     sheet_path = query_sheet(temp_dir)
     order_nums = sheets.extract_order_nums(sheet_path)
-
-    data = []
 
     total = len(order_nums)
 
@@ -61,9 +65,11 @@ def main():
         if progress:
             print(f"{i + 1}/{total}")
 
-        url = "https://www2.order-fulfillment.bz/vanityart/orders"
+        url = f"https://www2.order-fulfillment.bz/{site}/orders"
+        order_url = f"{url}/{order_num}/manage"
 
-        driver.get(f"{url}/{order_num}/manage")
+        driver.get(order_url)
+        wait.until(lambda driver: driver.current_url == order_url)
 
         tbodys = driver.find_elements(By.CSS_SELECTOR, "tbody")
         while len(tbodys) < 4:
@@ -90,10 +96,8 @@ def main():
         else:
             raise ValueError
 
-        warehouse = driver.find_elements(By.CSS_SELECTOR, "tbody")[2].find_elements(By.CSS_SELECTOR, "td")[1].get_attribute("innerText")
-
+        warehouse = query_warehouse(driver)
         po = po_num["textContent"][3:]
-        warehouse = warehouse[warehouse.index("(") + 1:warehouse.index(")")]
         carrier = carrier[carrier.index("Shipping Method -") + 18:].strip()
         status = "Not Shipped"
         ship_status = sheets.get_ship_status(order_time, status)
@@ -137,6 +141,32 @@ def main():
             ship_status,
             items,
         ))
+
+
+def main():
+    progress = len(sys.argv) > 1 and sys.argv[1] == "prog"
+    temp_dir = os.path.join(gettempdir(), f"scraped_report{random()}")
+    Path(temp_dir).mkdir(parents=True, exist_ok=False)
+
+    capabilities = DesiredCapabilities().CHROME
+    capabilities["pageLoadStrategy"] = "none"
+
+    options = webdriver.ChromeOptions()
+    options.add_argument("--log-level=3")
+    # options.add_argument("--disable-extensions")
+    # options.add_argument("--disable-gpu")
+    # options.add_argument("--headless")
+    options.add_experimental_option("prefs", { "download.default_directory": temp_dir })
+
+    driver = webdriver.Chrome("C:/Selenium/chromedriver.exe", chrome_options=options, desired_capabilities=capabilities)
+    wait = WebDriverWait(driver, 10)
+    data = []
+
+    username = input("Username:\n")
+    password = input("Password:\n")
+
+    scrape(driver, data, wait, "homebeyond", progress, temp_dir, username, password)
+    scrape(driver, data, wait, "vanityart",  progress, temp_dir, username, password)
 
     class_lookup = sheets.load_class_lookup("class_lookup.xlsx")
     combo_lookup = sheets.load_combo_lookup("combo_lookup.xlsx")
