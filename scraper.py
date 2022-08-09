@@ -1,7 +1,3 @@
-"""
-Scrapes data from a website
-"""
-
 import os
 import sys
 from selenium import webdriver
@@ -12,7 +8,7 @@ from selenium.webdriver.support import expected_conditions
 from tempfile import gettempdir
 from pathlib import Path
 from random import random
-from datetime import datetime
+from datetime import datetime, date
 import sheets
 
 
@@ -46,7 +42,18 @@ def query_warehouse(driver):
     raise ValueError("Could not find warehouse")
 
 
-def scrape(driver, data, wait, site, progress, temp_dir, username, password):
+def query_carrier(driver, carrier_i):
+    carrier = driver.find_elements(By.CSS_SELECTOR, "tbody")[2].find_elements(By.CSS_SELECTOR, "td")[carrier_i].get_attribute("innerText")
+
+    try:
+        return carrier[carrier.index("[") + 1:carrier.index("]")]
+    except ValueError:
+        # carrier = driver.find_element(By.CSS_SELECTOR, "address").get_attribute("innerHTML")
+        # return carrier[carrier.index("Shipping Method -") + 18:].strip()
+        return "UNKWN"
+
+
+def scrape(driver, data, wait, site, cmd_options, temp_dir, username, password):
     driver.get(f"https://www2.order-fulfillment.bz/{site}/reports")
 
     wait.until(expected_conditions.presence_of_element_located((By.ID, "btnLogin")))
@@ -62,7 +69,7 @@ def scrape(driver, data, wait, site, progress, temp_dir, username, password):
     total = len(order_nums)
 
     for i, order_num in enumerate(order_nums):
-        if progress:
+        if cmd_options["show_progress"]:
             print(f"{i + 1}/{total}")
 
         url = f"https://www2.order-fulfillment.bz/{site}/orders"
@@ -77,7 +84,6 @@ def scrape(driver, data, wait, site, progress, temp_dir, username, password):
         tbody = tbodys[3]
 
         items = []
-        carrier = driver.find_element(By.CSS_SELECTOR, "address").get_attribute("innerHTML")
 
         order_time = None
         po_num = None
@@ -98,14 +104,15 @@ def scrape(driver, data, wait, site, progress, temp_dir, username, password):
 
         warehouse = query_warehouse(driver)
         po = po_num["textContent"][3:]
-        carrier = carrier[carrier.index("Shipping Method -") + 18:].strip()
         status = "Not Shipped"
         ship_status = sheets.get_ship_status(order_time, status)
 
         headings = driver.find_elements(By.CSS_SELECTOR, "thead")[3].find_element(By.CSS_SELECTOR, "tr").find_elements(By.CSS_SELECTOR, "th")
+        headings2 = driver.find_elements(By.CSS_SELECTOR, "thead")[2].find_element(By.CSS_SELECTOR, "tr").find_elements(By.CSS_SELECTOR, "th")
 
         num_index = None
         qty_index = None
+        carrier_i = None
 
         for i, heading in enumerate(headings):
             text = heading.get_attribute("innerText")
@@ -119,6 +126,19 @@ def scrape(driver, data, wait, site, progress, temp_dir, username, password):
                 break
         else:
             raise ValueError
+
+        for i, heading in enumerate(headings2):
+            text = heading.get_attribute("innerText")
+
+            if text == "Tracking #":
+                carrier_i = i
+
+            if carrier_i is not None:
+                break
+        else:
+            raise ValueError
+
+        carrier = query_carrier(driver, carrier_i)
 
         for trow in tbody.find_elements(By.CSS_SELECTOR, "tr"):
             item_data = trow.find_elements(By.CSS_SELECTOR, "td")
@@ -142,9 +162,30 @@ def scrape(driver, data, wait, site, progress, temp_dir, username, password):
             items,
         ))
 
+        if cmd_options["debug"]:
+            print(data[-1])
+
+        if cmd_options["pause"]:
+            while True: pass
+
+
+def parse_cmd_options():
+    opts = {
+        "show_progress": False,
+        "non_headless": False,
+        "pause": False,
+        "debug": False,
+    }
+
+    for opt in sys.argv:
+        if opt in opts:
+            opts[opt] = True
+
+    return opts
+
 
 def main():
-    progress = len(sys.argv) > 1 and sys.argv[1] == "prog"
+    cmd_options = parse_cmd_options()
     temp_dir = os.path.join(gettempdir(), f"scraped_report{random()}")
     Path(temp_dir).mkdir(parents=True, exist_ok=False)
 
@@ -153,9 +194,12 @@ def main():
 
     options = webdriver.ChromeOptions()
     options.add_argument("--log-level=3")
-    # options.add_argument("--disable-extensions")
-    # options.add_argument("--disable-gpu")
-    # options.add_argument("--headless")
+
+    if not cmd_options["non_headless"]:
+        options.add_argument("--disable-extensions")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--headless")
+
     options.add_experimental_option("prefs", { "download.default_directory": temp_dir })
 
     driver = webdriver.Chrome("C:/Selenium/chromedriver.exe", chrome_options=options, desired_capabilities=capabilities)
@@ -165,15 +209,15 @@ def main():
     username = input("Username:\n")
     password = input("Password:\n")
 
-    scrape(driver, data, wait, "homebeyond", progress, temp_dir, username, password)
-    scrape(driver, data, wait, "vanityart",  progress, temp_dir, username, password)
+    scrape(driver, data, wait, "homebeyond", cmd_options, temp_dir, username, password)
+    scrape(driver, data, wait, "vanityart",  cmd_options, temp_dir, username, password)
 
     class_lookup = sheets.load_class_lookup("class_lookup.xlsx")
     combo_lookup = sheets.load_combo_lookup("combo_lookup.xlsx")
     warehouses = sheets.input_warehouses()
     output_data = sheets.parse_data(data, warehouses, class_lookup, combo_lookup)
 
-    sheets.write_data(output_data, "scraped.xlsx")
+    sheets.write_data(output_data, f"scraped_{date.today()}.xlsx")
 
 
 if __name__ == "__main__":

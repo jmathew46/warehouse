@@ -209,7 +209,6 @@ class Entry(object):
 
         class_name = class_lookup.get(self.items[0].num, "")
         item_num = self.get_combo_num(combo_lookup) if self.is_combo else self.uid
-        total_qty = f"{self.total_qty} ({self.late_qty} Late)"
 
         to_display = [item for item in self.items if item.ship_status == "Late"]
 
@@ -217,14 +216,15 @@ class Entry(object):
             "data": [
                 [class_name],
                 [item_num],
-                [total_qty],
+                [self.total_qty],
+                [self.late_qty],
                 [item.qty for item in to_display],
                 [item.po for item in to_display],
                 [item.carrier for item in to_display],
                 [item.warehouse for item in to_display],
             ],
 
-            "merge": [ 1, 2, 3],
+            "merge": [ 1, 2, 3, 4],
         })
 
 
@@ -320,6 +320,7 @@ def write_data(output_data, path):
         "Item",
         "Total Qty",
         "Late Qty",
+        "Late Qtys",
         "PO",
         "Carrier",
         "Warehouse",
