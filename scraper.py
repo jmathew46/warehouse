@@ -13,6 +13,10 @@ import sheets
 
 
 def query_sheet(path):
+    """
+    Wait for a sheet to be downloaded
+    """
+
     while True:
         files = os.listdir(path)
 
@@ -23,13 +27,20 @@ def query_sheet(path):
 
 
 def clear_files(path):
+    """
+    Remove all files from a directory
+    """
     files = os.listdir(path)
 
     for f in files:
         os.remove(os.path.join(path, f))
 
 
-def query_warehouse(driver):
+def get_warehouse(driver):
+    """
+    Determine the warehouse
+    """
+
     wh_strip = lambda s: "".join(c for c in s if c.isalpha())
     for elem in driver.find_elements(By.CSS_SELECTOR, "b"):
         if "green" in elem.get_attribute("style"):
@@ -42,18 +53,24 @@ def query_warehouse(driver):
     raise ValueError("Could not find warehouse")
 
 
-def query_carrier(driver, carrier_i):
+def get_carrier(driver, carrier_i):
+    """
+    Determine the carrier
+    """
+
     carrier = driver.find_elements(By.CSS_SELECTOR, "tbody")[2].find_elements(By.CSS_SELECTOR, "td")[carrier_i].get_attribute("innerText")
 
     try:
         return carrier[carrier.index("[") + 1:carrier.index("]")]
     except ValueError:
-        # carrier = driver.find_element(By.CSS_SELECTOR, "address").get_attribute("innerHTML")
-        # return carrier[carrier.index("Shipping Method -") + 18:].strip()
         return "UNKWN"
 
 
 def scrape(driver, data, wait, site, cmd_options, temp_dir, username, password):
+    """
+    Scrape one website and add all the data to `data`
+    """
+
     driver.get(f"https://www2.order-fulfillment.bz/{site}/reports")
 
     wait.until(expected_conditions.presence_of_element_located((By.ID, "btnLogin")))
@@ -102,7 +119,7 @@ def scrape(driver, data, wait, site, cmd_options, temp_dir, username, password):
         else:
             raise ValueError
 
-        warehouse = query_warehouse(driver)
+        warehouse = get_warehouse(driver)
         po = po_num["textContent"][3:]
         status = "Not Shipped"
         ship_status = sheets.get_ship_status(order_time, status)
@@ -138,7 +155,7 @@ def scrape(driver, data, wait, site, cmd_options, temp_dir, username, password):
         else:
             raise ValueError
 
-        carrier = query_carrier(driver, carrier_i)
+        carrier = get_carrier(driver, carrier_i)
 
         for trow in tbody.find_elements(By.CSS_SELECTOR, "tr"):
             item_data = trow.find_elements(By.CSS_SELECTOR, "td")
@@ -170,11 +187,15 @@ def scrape(driver, data, wait, site, cmd_options, temp_dir, username, password):
 
 
 def parse_cmd_options():
+    """
+    Parse options passed from the command line
+    """
+
     opts = {
-        "show_progress": False,
-        "non_headless": False,
-        "pause": False,
-        "debug": False,
+        "show_progress": False, # show how much total progress has been made by printing to stdout
+        "non_headless": False,  # don't operate in headless mode (show browser window)
+        "pause": False,         # pause on the first order (for inspecting)
+        "debug": False,         # debug the data
     }
 
     for opt in sys.argv:

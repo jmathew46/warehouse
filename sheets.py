@@ -1,3 +1,7 @@
+"""
+Module for reading/writing of google sheets with item data
+"""
+
 import openpyxl
 import itertools
 import numpy as np
@@ -11,6 +15,10 @@ MAX_DELAY = 2
 
 
 def decompose_item_num(item_num):
+    """
+    Removes color information from an item number
+    """
+
     item_num = item_num.replace("-", "")
 
     try:
@@ -22,6 +30,10 @@ def decompose_item_num(item_num):
 
 
 def extract_order_nums(path):
+    """
+    Extracts order numbers from a google sheet downloaded from the order website
+    """
+
     sheet = openpyxl.load_workbook(path).active
     order_nums = []
 
@@ -37,6 +49,10 @@ def extract_order_nums(path):
 
 
 def strip_color(num):
+    """
+    Strips color information from an item only if it follows a dash
+    """
+
     dash_i = num.index("-")
 
     try:
@@ -49,6 +65,10 @@ def strip_color(num):
 
 
 def input_warehouses():
+    """
+    Read warehouse selection from stdin
+    """
+
     print("Choose Warehouses")
 
     for i, warehouse in enumerate(WAREHOUSE_IDS):
@@ -70,7 +90,15 @@ def input_warehouses():
 
 
 def load_class_lookup(path):
+    """
+    Loads a class lookup sheet
+    """
+
     def parse_lookup_item_nums(item_nums_raw):
+        """
+        Parses a sequence of item numbers from a raw string
+        """
+
         if item_nums_raw is None:
             return []
 
@@ -94,6 +122,10 @@ def load_class_lookup(path):
 
 
 def load_combo_lookup(path):
+    """
+    Loads a combo lookup sheet
+    """
+
     combo_lookup_sheet = openpyxl.load_workbook(path).active
     combo_lookup = {}
 
@@ -115,6 +147,10 @@ def load_combo_lookup(path):
 
 
 class Item(object):
+    """
+    An object representing an individual item
+    """
+
     def __init__(self):
         self.num = None
         self.qty = None
@@ -128,6 +164,10 @@ class Item(object):
 
 
 class Entry(object):
+    """
+    An object representing a group of items (a row in the output sheet)
+    """
+
     def __init__(self):
         self.items = []
         self.special_order = False
@@ -142,6 +182,12 @@ class Entry(object):
         return f"[{special_order_char}] {self.uid}\n\t{item_str}\n"
 
     def count_qtys(self, late, combo_lookup):
+        """
+        Compute the total quantity of a combo entry
+        """
+
+        # the following piece of logic selects either all late items or all items based on the boolean `late`
+        # if its true then only late items are selected, otherwise all items are selected
         items = [item for item in self.items if not (item.ship_status != "Late" and late)]
         counts = {}
         combo = combo_lookup[strip_color(self.uid)]
@@ -164,7 +210,12 @@ class Entry(object):
         assert(all(val == vals[0] for val in vals))
         return vals[0]
 
+    # maybe combine with count_qtys
     def compute_qtys(self, combo_lookup):
+        """
+        Figure out the total quantity
+        """
+
         if self.is_combo:
             self.total_qty = self.count_qtys(False, combo_lookup)
             self.late_qty = self.count_qtys(True, combo_lookup)
@@ -173,6 +224,10 @@ class Entry(object):
             self.late_qty = sum(int(item.qty) for item in self.items if item.ship_status == "Late")
 
     def compute_uid(self, combo_lookup):
+        """
+        Find a unique identifier for this entry (entries with shared uids are combined into one)
+        """
+
         if len(self.items) == 1:
             self.uid = self.items[0].num
             return
@@ -197,14 +252,26 @@ class Entry(object):
             self.is_combo = False
 
     def add_entry(self, entry):
+        """
+        Combine an entry into this one
+        """
+
         self.items.extend(entry.items)
 
     def get_combo_num(self, combo_lookup):
+        """
+        Returns the display string for combos
+        """
+
         combo = combo_lookup[strip_color(self.uid)]
         items_str = " ".join(f"{k} ({v})" for k, v in combo.items())
         return f"{self.uid}: {items_str}"
 
     def write_to(self, output_data, class_lookup, combo_lookup):
+        """
+        Writes this entry to an output data array
+        """
+
         self.compute_qtys(combo_lookup)
 
         class_name = class_lookup.get(self.items[0].num, "")
@@ -213,7 +280,7 @@ class Entry(object):
         to_display = [item for item in self.items if item.ship_status == "Late"]
 
         output_data.append({
-            "data": [
+            "data": [ # 2d array (array of columns)
                 [class_name],
                 [item_num],
                 [self.total_qty],
@@ -224,11 +291,15 @@ class Entry(object):
                 [item.warehouse for item in to_display],
             ],
 
-            "merge": [ 1, 2, 3, 4],
+            "merge": [ 1, 2, 3, 4], # columns to merge
         })
 
 
 def get_ship_status(order_time, status):
+    """
+    Determine the ship status ("Late" or "On Time") based on the order time and status ("shipped" or "not shipped")
+    """
+
     if order_time is None:
         return "On Time"
 
@@ -239,6 +310,10 @@ def get_ship_status(order_time, status):
 
 
 def get_data(data_sheet):
+    """
+    Extracts item data from a sheet
+    """
+
     data = []
 
     for row in range(2, data_sheet.max_row + 1):
@@ -273,6 +348,10 @@ def get_data(data_sheet):
 
 
 def parse_data(data, warehouses, class_lookup, combo_lookup):
+    """
+    Parse data extracted from a sheet
+    """
+
     entries = {}
 
     for po, carrier, status, warehouse, ship_status, items in data:
@@ -312,6 +391,10 @@ def parse_data(data, warehouses, class_lookup, combo_lookup):
 
 
 def write_data(output_data, path):
+    """
+    Write data to an output sheet
+    """
+
     output_wb = openpyxl.Workbook()
     output_sheet = output_wb.active
 
